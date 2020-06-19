@@ -54,7 +54,9 @@ func (s *StandAloneStorage) Stop() error {
 // Reader is a func
 func (s *StandAloneStorage) Reader(ctx *kvrpcpb.Context) (storage.StorageReader, error) {
 	// Your Code Here (1).
-	return nil, nil
+	txn := s.db.NewTransaction(false)
+	return NewStandaloneReader(txn), nil
+	// return nil, nil
 }
 
 // Write is a func
