@@ -17,7 +17,14 @@ func NewStandaloneReader(txn *badger.Txn) *StandaloneReader {
 }
 
 func (sr *StandaloneReader) GetCF(cf string, key []byte) ([]byte, error) {
-	return engine_util.GetCFFromTxn(sr.txn, cf, key)
+	val, err := engine_util.GetCFFromTxn(sr.txn, cf, key)
+	if err != nil {
+		if err == badger.ErrKeyNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return val, err
 }
 
 // IterCF is a func

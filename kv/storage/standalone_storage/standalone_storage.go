@@ -56,7 +56,6 @@ func (s *StandAloneStorage) Reader(ctx *kvrpcpb.Context) (storage.StorageReader,
 	// Your Code Here (1).
 	txn := s.db.NewTransaction(false)
 	return NewStandaloneReader(txn), nil
-	// return nil, nil
 }
 
 // Write is a func
