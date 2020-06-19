@@ -122,6 +122,9 @@ func (server *Server) RawScan(_ context.Context, req *kvrpcpb.RawScanRequest) (*
 			Key:   key,
 			Value: val,
 		})
+		if uint32(len(kvpairs)) == req.GetLimit() {
+			break
+		}
 		it.Next()
 	}
 
