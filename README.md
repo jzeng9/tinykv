@@ -29,7 +29,7 @@ Also, you’d better read the overview design of TiKV and PD to get a general im
 First, please clone the repository with git to get the source code of the project.
 
 ``` bash
-git clone https://github.com/pingcap-incubator/tinykv.git
+go get -u "github.com/jzeng9/tinykv"
 ```
 
 Then make sure you have installed [go](https://golang.org/doc/install) >= 1.13 toolchains. You should also have installed `make`.
