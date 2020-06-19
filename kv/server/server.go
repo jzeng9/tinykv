@@ -38,7 +38,26 @@ func NewServer(storage storage.Storage) *Server {
 // Raw API.
 func (server *Server) RawGet(_ context.Context, req *kvrpcpb.RawGetRequest) (*kvrpcpb.RawGetResponse, error) {
 	// Your Code Here (1).
-	return nil, nil
+	reader, err := server.storage.Reader(req.GetContext())
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	val, err := reader.GetCF(req.GetCf(), req.GetKey())
+	if err != nil {
+		return nil, err
+	}
+
+	if val == nil {
+		return &kvrpcpb.RawGetResponse{
+			NotFound: true,
+		}, nil
+	}
+
+	return &kvrpcpb.RawGetResponse{
+		Value: val,
+	}, nil
 }
 
 func (server *Server) RawPut(_ context.Context, req *kvrpcpb.RawPutRequest) (*kvrpcpb.RawPutResponse, error) {
