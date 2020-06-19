@@ -40,13 +40,17 @@ func (server *Server) RawGet(_ context.Context, req *kvrpcpb.RawGetRequest) (*kv
 	// Your Code Here (1).
 	reader, err := server.storage.Reader(req.GetContext())
 	if err != nil {
-		return nil, err
+		return &kvrpcpb.RawGetResponse{
+			Error: err.Error(),
+		}, err
 	}
 	defer reader.Close()
 
 	val, err := reader.GetCF(req.GetCf(), req.GetKey())
 	if err != nil {
-		return nil, err
+		return &kvrpcpb.RawGetResponse{
+			Error: err.Error(),
+		}, err
 	}
 
 	if val == nil {
@@ -62,7 +66,20 @@ func (server *Server) RawGet(_ context.Context, req *kvrpcpb.RawGetRequest) (*kv
 
 func (server *Server) RawPut(_ context.Context, req *kvrpcpb.RawPutRequest) (*kvrpcpb.RawPutResponse, error) {
 	// Your Code Here (1).
-	return nil, nil
+	if err := server.storage.Write(req.GetContext(), []storage.Modify{
+		{
+			Data: storage.Put{
+				Cf:    req.GetCf(),
+				Key:   req.GetKey(),
+				Value: req.GetValue(),
+			},
+		},
+	}); err != nil {
+		return &kvrpcpb.RawPutResponse{
+			Error: err.Error(),
+		}, err
+	}
+	return &kvrpcpb.RawPutResponse{}, nil
 }
 
 func (server *Server) RawDelete(_ context.Context, req *kvrpcpb.RawDeleteRequest) (*kvrpcpb.RawDeleteResponse, error) {
