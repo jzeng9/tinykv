@@ -64,7 +64,6 @@ func (s *StandAloneStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) 
 	// TODO: no save point is used
 	var wb engine_util.WriteBatch
 	for _, mod := range batch {
-		wb.Reset()
 		switch mod.Data.(type) {
 		case storage.Put:
 			wb.SetCF(mod.Cf(), mod.Key(), mod.Value())
@@ -73,9 +72,9 @@ func (s *StandAloneStorage) Write(ctx *kvrpcpb.Context, batch []storage.Modify) 
 			wb.DeleteCF(mod.Cf(), mod.Key())
 			break
 		}
-		if err := wb.WriteToDB(s.db); err != nil {
-			return err
-		}
+	}
+	if err := wb.WriteToDB(s.db); err != nil {
+		return err
 	}
 	return nil
 }
