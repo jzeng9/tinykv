@@ -182,6 +182,25 @@ func (r *Raft) sendHeartbeat(to uint64) {
 // tick advances the internal logical clock by a single tick.
 func (r *Raft) tick() {
 	// Your Code Here (2A).
+	if r.State == StateLeader {
+		r.heartbeatElapsed++
+		// check
+		if r.heartbeatElapsed == r.heartbeatTimeout {
+			// Pass the beat to the step method
+			r.Step(pb.Message{
+				MsgType: pb.MessageType_MsgBeat,
+			})
+		}
+	} else if r.State == StateFollower {
+		r.electionElapsed++
+		// check
+		if r.electionElapsed == r.electionTimeout {
+			// Pass the hub to the step method
+			r.Step(pb.Message{
+				MsgType: pb.MessageType_MsgHup,
+			})
+		}
+	}
 }
 
 // becomeFollower transform this peer's state to Follower
@@ -196,7 +215,7 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 func (r *Raft) becomeCandidate() {
 	// Your Code Here (2A).
 	r.State = StateCandidate
-	// TODO: start to request votes
+	// TODO:
 }
 
 // becomeLeader transform this peer's state to leader
@@ -218,25 +237,29 @@ func (r *Raft) Step(m pb.Message) error {
 			// TODO: election time out happen
 			r.becomeCandidate()
 		case eraftpb.MessageType_MsgAppend:
-			// TODO: handle the msg to append log (2B)
+			// TODO: handle the msg to append log
 			r.handleAppendEntries(m)
 		case eraftpb.MessageType_MsgRequestVote:
 			// TODO: handle request to vote
 		case eraftpb.MessageType_MsgSnapshot:
-			// TODO: request to install a snap shot (2C)
+			// TODO: request to install a snap shot
 			r.handleSnapshot(m)
+		case eraftpb.MessageType_MsgHeartbeat:
+			// TODO: handle the heartbeat
 		case eraftpb.MessageType_MsgTimeoutNow:
 			// TODO: not known yet
 		}
 	case StateCandidate:
 		switch m.MsgType {
 		case eraftpb.MessageType_MsgAppend:
-			// TODO: handle the msg to append log (2B)
+			// TODO: handle the msg to append log
 			r.handleAppendEntries(m)
+		case eraftpb.MessageType_MsgRequestVote:
+			// TODO: handle request to vote
 		case eraftpb.MessageType_MsgRequestVoteResponse:
 			// TODO: handle the request to vote
 		case eraftpb.MessageType_MsgSnapshot:
-			// TODO: handle the request to add snapshot (2C)
+			// TODO: handle the request to add snapshot
 		case eraftpb.MessageType_MsgHeartbeat:
 			// TODO: handle the heartbeat
 		case eraftpb.MessageType_MsgTimeoutNow:
@@ -247,11 +270,11 @@ func (r *Raft) Step(m pb.Message) error {
 		case eraftpb.MessageType_MsgBeat:
 			// TODO: time for heat beat
 		case eraftpb.MessageType_MsgPropose:
-			// TODO: need to append log
+			// TODO: need to append log from local
 		case eraftpb.MessageType_MsgAppendResponse:
-			// TODO: reponse from append res
+			// TODO: reponse from append req
 		case eraftpb.MessageType_MsgRequestVote:
-			// TODO: someone request vote from me
+			// TODO: someone request vote from me, I am the leader
 		case eraftpb.MessageType_MsgHeartbeatResponse:
 			// TODO: heart beat reponse
 		}
