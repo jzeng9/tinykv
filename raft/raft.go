@@ -17,6 +17,7 @@ package raft
 import (
 	"errors"
 
+	"github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 )
 
@@ -186,17 +187,24 @@ func (r *Raft) tick() {
 // becomeFollower transform this peer's state to Follower
 func (r *Raft) becomeFollower(term uint64, lead uint64) {
 	// Your Code Here (2A).
+	r.Lead = lead
+	r.State = StateFollower
+	r.Term = term
 }
 
 // becomeCandidate transform this peer's state to candidate
 func (r *Raft) becomeCandidate() {
 	// Your Code Here (2A).
+	r.State = StateCandidate
+	// TODO: start to request votes
 }
 
 // becomeLeader transform this peer's state to leader
 func (r *Raft) becomeLeader() {
 	// Your Code Here (2A).
 	// NOTE: Leader should propose a noop entry on its term
+	r.State = StateLeader
+	// TODO: append noop entry
 }
 
 // Step the entrance of handle message, see `MessageType`
@@ -205,8 +213,48 @@ func (r *Raft) Step(m pb.Message) error {
 	// Your Code Here (2A).
 	switch r.State {
 	case StateFollower:
+		switch m.MsgType {
+		case eraftpb.MessageType_MsgHup:
+			// TODO: election time out happen
+			r.becomeCandidate()
+		case eraftpb.MessageType_MsgAppend:
+			// TODO: handle the msg to append log (2B)
+			r.handleAppendEntries(m)
+		case eraftpb.MessageType_MsgRequestVote:
+			// TODO: handle request to vote
+		case eraftpb.MessageType_MsgSnapshot:
+			// TODO: request to install a snap shot (2C)
+			r.handleSnapshot(m)
+		case eraftpb.MessageType_MsgTimeoutNow:
+			// TODO: not known yet
+		}
 	case StateCandidate:
+		switch m.MsgType {
+		case eraftpb.MessageType_MsgAppend:
+			// TODO: handle the msg to append log (2B)
+			r.handleAppendEntries(m)
+		case eraftpb.MessageType_MsgRequestVoteResponse:
+			// TODO: handle the request to vote
+		case eraftpb.MessageType_MsgSnapshot:
+			// TODO: handle the request to add snapshot (2C)
+		case eraftpb.MessageType_MsgHeartbeat:
+			// TODO: handle the heartbeat
+		case eraftpb.MessageType_MsgTimeoutNow:
+			// TODO: not known yet
+		}
 	case StateLeader:
+		switch m.MsgType {
+		case eraftpb.MessageType_MsgBeat:
+			// TODO: time for heat beat
+		case eraftpb.MessageType_MsgPropose:
+			// TODO: need to append log
+		case eraftpb.MessageType_MsgAppendResponse:
+			// TODO: reponse from append res
+		case eraftpb.MessageType_MsgRequestVote:
+			// TODO: someone request vote from me
+		case eraftpb.MessageType_MsgHeartbeatResponse:
+			// TODO: heart beat reponse
+		}
 	}
 	return nil
 }
