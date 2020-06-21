@@ -220,7 +220,7 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 func (r *Raft) becomeCandidate() {
 	// Your Code Here (2A).
 	r.State = StateCandidate
-	r.Vote = 0
+	r.Vote = r.id
 	// TODO: send out the request votes
 }
 
@@ -304,7 +304,6 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 	if r.State == StateFollower && r.Lead == m.GetFrom() {
 		// Recevied heartbeat from the real leader
 		rejectHeartBeat = true
-		return
 	} else if r.Term < m.GetTerm() ||
 		(r.Term == m.GetTerm() && r.State == StateCandidate) {
 		// roll back to candidate
@@ -323,7 +322,7 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 	}
 	r.msgs = append(r.msgs, pb.Message{
 		MsgType: pb.MessageType_MsgHeartbeatResponse,
-		To:      r.Lead,
+		To:      m.GetFrom(),
 		From:    r.id,
 		Term:    r.Term,
 		Reject:  rejectHeartBeat,
@@ -337,7 +336,22 @@ func (r *Raft) handleSnapshot(m pb.Message) {
 
 //
 func (r *Raft) handleVoteRequest(m pb.Message) {
+	var grantVote bool = false
+	if r.Term < m.GetTerm() {
+		grantVote = r.Vote == 0 || r.Vote == m.GetFrom()
+	} else if r.Term >= m.GetTerm() {
+		grantVote = false
+	}
 
+	if grantVote {
+		r.Vote = m.GetFrom()
+	}
+	r.msgs = append(r.msgs, pb.Message{
+		MsgType: pb.MessageType_MsgRequestVoteResponse,
+		From:    r.id,
+		To:      m.GetFrom(),
+		Reject:  !grantVote,
+	})
 }
 
 // addNode add a new node to raft group
