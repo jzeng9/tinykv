@@ -183,7 +183,8 @@ func (r *Raft) sendHeartbeat(to uint64) {
 // tick advances the internal logical clock by a single tick.
 func (r *Raft) tick() {
 	// Your Code Here (2A).
-	if r.State == StateLeader {
+	switch r.State {
+	case StateLeader:
 		r.heartbeatElapsed++
 		// check
 		if r.heartbeatElapsed == r.heartbeatTimeout {
@@ -192,7 +193,7 @@ func (r *Raft) tick() {
 				MsgType: pb.MessageType_MsgBeat,
 			})
 		}
-	} else if r.State == StateFollower {
+	case StateFollower:
 		r.electionElapsed++
 		// check
 		if r.electionElapsed == r.electionTimeout {
@@ -210,6 +211,7 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 	r.Lead = lead
 	r.State = StateFollower
 	r.Term = term
+	r.Vote = 0
 
 	r.electionElapsed = 0
 }
@@ -218,6 +220,7 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 func (r *Raft) becomeCandidate() {
 	// Your Code Here (2A).
 	r.State = StateCandidate
+	r.Vote = 0
 	// TODO: send out the request votes
 }
 
@@ -227,6 +230,7 @@ func (r *Raft) becomeLeader() {
 	// NOTE: Leader should propose a noop entry on its term
 	r.State = StateLeader
 	r.Lead = r.id
+	r.Vote = 0
 
 	r.heartbeatElapsed = 0
 	// TODO: append noop entry
@@ -296,37 +300,18 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 // handleHeartbeat handle Heartbeat RPC request
 func (r *Raft) handleHeartbeat(m pb.Message) {
 	// Your Code Here (2A).
+	var rejectHeartBeat bool = false
 	if r.State == StateFollower && r.Lead == m.GetFrom() {
 		// Recevied heartbeat from the real leader
-		r.msgs = append(r.msgs, pb.Message{
-			MsgType: pb.MessageType_MsgHeartbeatResponse,
-			To:      r.Lead,
-			From:    r.id,
-			Term:    r.Term,
-			Reject:  false,
-		})
+		rejectHeartBeat = true
 		return
 	} else if r.Term < m.GetTerm() ||
 		(r.Term == m.GetTerm() && r.State == StateCandidate) {
 		// roll back to candidate
 		r.becomeFollower(m.GetTerm(), m.GetFrom())
-
-		r.msgs = append(r.msgs, pb.Message{
-			MsgType: pb.MessageType_MsgHeartbeatResponse,
-			To:      m.GetFrom(),
-			From:    r.id,
-			Term:    r.Term,
-			Reject:  false,
-		})
-		return
+		rejectHeartBeat = false
 	} else if r.Term > m.GetTerm() {
-		r.msgs = append(r.msgs, pb.Message{
-			MsgType: pb.MessageType_MsgHeartbeatResponse,
-			To:      m.GetFrom(),
-			From:    r.id,
-			Term:    r.Term,
-			Reject:  true,
-		})
+		rejectHeartBeat = true
 	} else {
 		panic(
 			fmt.Sprintf(
@@ -336,6 +321,13 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 			),
 		)
 	}
+	r.msgs = append(r.msgs, pb.Message{
+		MsgType: pb.MessageType_MsgHeartbeatResponse,
+		To:      r.Lead,
+		From:    r.id,
+		Term:    r.Term,
+		Reject:  rejectHeartBeat,
+	})
 }
 
 // handleSnapshot handle Snapshot RPC request
@@ -345,7 +337,7 @@ func (r *Raft) handleSnapshot(m pb.Message) {
 
 //
 func (r *Raft) handleVoteRequest(m pb.Message) {
-	return
+
 }
 
 // addNode add a new node to raft group
