@@ -16,6 +16,7 @@ package raft
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
@@ -209,13 +210,15 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 	r.Lead = lead
 	r.State = StateFollower
 	r.Term = term
+
+	r.electionElapsed = 0
 }
 
 // becomeCandidate transform this peer's state to candidate
 func (r *Raft) becomeCandidate() {
 	// Your Code Here (2A).
 	r.State = StateCandidate
-	// TODO:
+	// TODO: send out the request votes
 }
 
 // becomeLeader transform this peer's state to leader
@@ -223,6 +226,9 @@ func (r *Raft) becomeLeader() {
 	// Your Code Here (2A).
 	// NOTE: Leader should propose a noop entry on its term
 	r.State = StateLeader
+	r.Lead = r.id
+
+	r.heartbeatElapsed = 0
 	// TODO: append noop entry
 }
 
@@ -234,36 +240,36 @@ func (r *Raft) Step(m pb.Message) error {
 	case StateFollower:
 		switch m.MsgType {
 		case eraftpb.MessageType_MsgHup:
-			// TODO: election time out happen
+			// Election time out happen (2aa)
 			r.becomeCandidate()
 		case eraftpb.MessageType_MsgAppend:
-			// TODO: handle the msg to append log
-			r.handleAppendEntries(m)
+			// TODO: handle the msg to append log (2ab)
 		case eraftpb.MessageType_MsgRequestVote:
-			// TODO: handle request to vote
+			// handle request to vote (2aa)
+			r.handleVoteRequest(m)
 		case eraftpb.MessageType_MsgSnapshot:
-			// TODO: request to install a snap shot
-			r.handleSnapshot(m)
+			// TODO: request to install a snap shot (2c)
 		case eraftpb.MessageType_MsgHeartbeat:
-			// TODO: handle the heartbeat
+			// handle the heartbeat (2aa)
+			r.handleHeartbeat(m)
 		case eraftpb.MessageType_MsgTimeoutNow:
-			// TODO: not known yet
+			// TODO:
 		}
 	case StateCandidate:
 		switch m.MsgType {
 		case eraftpb.MessageType_MsgAppend:
-			// TODO: handle the msg to append log
-			r.handleAppendEntries(m)
+			// TODO: handle the msg to append log (2ab)
 		case eraftpb.MessageType_MsgRequestVote:
-			// TODO: handle request to vote
+			// TODO: handle request to vote (2aa)
 		case eraftpb.MessageType_MsgRequestVoteResponse:
-			// TODO: handle the request to vote
+			// TODO: handle the response of voting (2aa)
 		case eraftpb.MessageType_MsgSnapshot:
-			// TODO: handle the request to add snapshot
+			// TODO: handle the request to add snapshot (2c)
 		case eraftpb.MessageType_MsgHeartbeat:
-			// TODO: handle the heartbeat
+			// handle the heartbeat (2aa)
+			r.handleHeartbeat(m)
 		case eraftpb.MessageType_MsgTimeoutNow:
-			// TODO: not known yet
+			// TODO:
 		}
 	case StateLeader:
 		switch m.MsgType {
@@ -290,11 +296,56 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 // handleHeartbeat handle Heartbeat RPC request
 func (r *Raft) handleHeartbeat(m pb.Message) {
 	// Your Code Here (2A).
+	if r.State == StateFollower && r.Lead == m.GetFrom() {
+		// Recevied heartbeat from the real leader
+		r.msgs = append(r.msgs, pb.Message{
+			MsgType: pb.MessageType_MsgHeartbeatResponse,
+			To:      r.Lead,
+			From:    r.id,
+			Term:    r.Term,
+			Reject:  false,
+		})
+		return
+	} else if r.Term < m.GetTerm() ||
+		(r.Term == m.GetTerm() && r.State == StateCandidate) {
+		// roll back to candidate
+		r.becomeFollower(m.GetTerm(), m.GetFrom())
+
+		r.msgs = append(r.msgs, pb.Message{
+			MsgType: pb.MessageType_MsgHeartbeatResponse,
+			To:      m.GetFrom(),
+			From:    r.id,
+			Term:    r.Term,
+			Reject:  false,
+		})
+		return
+	} else if r.Term > m.GetTerm() {
+		r.msgs = append(r.msgs, pb.Message{
+			MsgType: pb.MessageType_MsgHeartbeatResponse,
+			To:      m.GetFrom(),
+			From:    r.id,
+			Term:    r.Term,
+			Reject:  true,
+		})
+	} else {
+		panic(
+			fmt.Sprintf(
+				"In the same term, there were two leaders: %v and %v",
+				m.GetFrom(),
+				r.Lead,
+			),
+		)
+	}
 }
 
 // handleSnapshot handle Snapshot RPC request
 func (r *Raft) handleSnapshot(m pb.Message) {
 	// Your Code Here (2C).
+}
+
+//
+func (r *Raft) handleVoteRequest(m pb.Message) {
+	return
 }
 
 // addNode add a new node to raft group
