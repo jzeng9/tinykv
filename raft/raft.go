@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 )
 
@@ -240,54 +239,44 @@ func (r *Raft) becomeLeader() {
 // on `eraftpb.proto` for what msgs should be handled
 func (r *Raft) Step(m pb.Message) error {
 	// Your Code Here (2A).
-	switch r.State {
-	case StateFollower:
-		switch m.MsgType {
-		case eraftpb.MessageType_MsgHup:
-			// Election time out happen (2aa)
-			r.becomeCandidate()
-		case eraftpb.MessageType_MsgAppend:
-			// TODO: handle the msg to append log (2ab)
-		case eraftpb.MessageType_MsgRequestVote:
-			// handle request to vote (2aa)
-			r.handleVoteRequest(m)
-		case eraftpb.MessageType_MsgSnapshot:
-			// TODO: request to install a snap shot (2c)
-		case eraftpb.MessageType_MsgHeartbeat:
-			// handle the heartbeat (2aa)
-			r.handleHeartbeat(m)
-		case eraftpb.MessageType_MsgTimeoutNow:
-			// TODO:
+	switch m.MsgType {
+	case pb.MessageType_MsgHup:
+		// Election time out happen (2aa)
+		r.becomeCandidate()
+	case pb.MessageType_MsgBeat:
+		// TODO: time for heat beat (2aa)
+		if r.State == StateLeader {
+
 		}
-	case StateCandidate:
-		switch m.MsgType {
-		case eraftpb.MessageType_MsgAppend:
-			// TODO: handle the msg to append log (2ab)
-		case eraftpb.MessageType_MsgRequestVote:
-			// TODO: handle request to vote (2aa)
-		case eraftpb.MessageType_MsgRequestVoteResponse:
-			// TODO: handle the response of voting (2aa)
-		case eraftpb.MessageType_MsgSnapshot:
-			// TODO: handle the request to add snapshot (2c)
-		case eraftpb.MessageType_MsgHeartbeat:
-			// handle the heartbeat (2aa)
-			r.handleHeartbeat(m)
-		case eraftpb.MessageType_MsgTimeoutNow:
-			// TODO:
+	case pb.MessageType_MsgPropose:
+		// TODO: need to append log from local (2aa)
+		if r.State == StateLeader {
+
 		}
-	case StateLeader:
-		switch m.MsgType {
-		case eraftpb.MessageType_MsgBeat:
-			// TODO: time for heat beat
-		case eraftpb.MessageType_MsgPropose:
-			// TODO: need to append log from local
-		case eraftpb.MessageType_MsgAppendResponse:
-			// TODO: reponse from append req
-		case eraftpb.MessageType_MsgRequestVote:
-			// TODO: someone request vote from me, I am the leader
-		case eraftpb.MessageType_MsgHeartbeatResponse:
-			// TODO: heart beat reponse
+	case pb.MessageType_MsgAppend:
+		// TODO: handle the msg to append log (2ab)
+	case pb.MessageType_MsgAppendResponse:
+		// TODO: reponse from append req (2ab)
+	case pb.MessageType_MsgRequestVote:
+		// handle request to vote (2aa)
+		r.handleVoteRequest(m)
+	case pb.MessageType_MsgRequestVoteResponse:
+		// handle the response of voting (2aa)
+		r.handleVoteRequestReponse(m)
+	case pb.MessageType_MsgSnapshot:
+		// TODO: request to install a snap shot (2c)
+	case pb.MessageType_MsgHeartbeat:
+		// handle the heartbeat (2aa)
+		r.handleHeartbeat(m)
+	case pb.MessageType_MsgHeartbeatResponse:
+		// handle heart beat reponse
+		if r.State == StateLeader {
+
 		}
+	case pb.MessageType_MsgTransferLeader:
+		// TODO:
+	case pb.MessageType_MsgTimeoutNow:
+		// TODO:
 	}
 	return nil
 }
@@ -334,7 +323,7 @@ func (r *Raft) handleSnapshot(m pb.Message) {
 	// Your Code Here (2C).
 }
 
-//
+// handleVoteRequest handles Vote RPC request
 func (r *Raft) handleVoteRequest(m pb.Message) {
 	var grantVote bool = false
 	if r.Term < m.GetTerm() {
@@ -352,6 +341,10 @@ func (r *Raft) handleVoteRequest(m pb.Message) {
 		To:      m.GetFrom(),
 		Reject:  !grantVote,
 	})
+}
+
+func (r *Raft) handleVoteRequestReponse(m pb.Message) {
+
 }
 
 // addNode add a new node to raft group
