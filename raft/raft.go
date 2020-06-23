@@ -157,6 +157,9 @@ type Raft struct {
 	// value.
 	// (Used in 3A conf change)
 	PendingConfIndex uint64
+
+	/* Add during project by Junlin Zeng */
+	rand *rand.Rand
 }
 
 // newRaft return a raft peer with the given config
@@ -174,6 +177,7 @@ func newRaft(c *Config) *Raft {
 	newRaftLog := newLog(c.Storage)
 	curTem, _ := newRaftLog.Term(newRaftLog.LastIndex())
 
+	// rand := rand.New(rand.NewSource(time.Now().UnixNano()))
 	rand := rand.New(rand.NewSource(int64(c.ID)))
 
 	// Your Code Here (2A).
@@ -187,9 +191,10 @@ func newRaft(c *Config) *Raft {
 		msgs:             []pb.Message{},
 		Lead:             0,
 		heartbeatTimeout: c.HeartbeatTick,
-		electionTimeout:  c.ElectionTick + rand.Intn(c.ElectionTick),
+		electionTimeout:  c.ElectionTick,
 		heartbeatElapsed: 0,
 		electionElapsed:  0,
+		rand:             rand,
 	}
 }
 
@@ -229,10 +234,10 @@ func (r *Raft) tick() {
 	// Your Code Here (2A).
 	switch r.State {
 	case StateLeader:
-		r.heartbeatElapsed++
+		r.heartbeatElapsed--
 		// check
-		if r.heartbeatElapsed == r.heartbeatTimeout {
-			r.heartbeatElapsed = 0
+		if r.heartbeatElapsed == 0 {
+			r.heartbeatElapsed = r.heartbeatTimeout
 			// Pass the beat to the step method
 			r.Step(pb.Message{
 				MsgType: pb.MessageType_MsgBeat,
@@ -241,11 +246,11 @@ func (r *Raft) tick() {
 	case StateCandidate:
 		fallthrough
 	case StateFollower:
-		r.electionElapsed++
+		r.electionElapsed--
 		// check
-		if r.electionElapsed == r.electionTimeout {
+		if r.electionElapsed == 0 {
 			// Pass the hub to the step method
-			r.electionElapsed = 0
+			r.electionElapsed = r.electionTimeout + rand.Intn(r.electionTimeout)
 			r.Step(pb.Message{
 				MsgType: pb.MessageType_MsgHup,
 			})
@@ -261,7 +266,7 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 	r.Term = term
 	r.Vote = 0
 
-	r.electionElapsed = 0
+	r.electionElapsed = r.electionTimeout + r.rand.Intn(r.electionTimeout)
 }
 
 // becomeCandidate transform this peer's state to candidate
@@ -271,6 +276,8 @@ func (r *Raft) becomeCandidate() {
 	r.Vote = r.id
 	r.Lead = r.id
 	r.Term++
+
+	r.electionElapsed = r.electionTimeout + rand.Intn(r.electionTimeout)
 }
 
 func (r *Raft) runElection() {
@@ -308,7 +315,7 @@ func (r *Raft) becomeLeader() {
 	r.Lead = r.id
 	r.Vote = 0
 
-	r.heartbeatElapsed = 0
+	r.heartbeatElapsed = r.heartbeatTimeout
 	// Append noop entry
 	r.RaftLog.appendNewLog(pb.Entry{
 		EntryType: pb.EntryType_EntryNormal,
@@ -403,13 +410,14 @@ func (r *Raft) handleSnapshot(m pb.Message) {
 // handleVoteRequest handles Vote RPC request
 func (r *Raft) handleVoteRequest(m pb.Message) {
 	var grantVote bool = false
+
 	if r.Vote == 0 || r.Vote == m.GetFrom() {
-		if r.Term > m.GetTerm() {
-			grantVote = false
-		} else if r.Term < m.GetTerm() {
-			grantVote = true
-		} else {
-			if m.GetIndex() >= r.RaftLog.LastIndex() {
+		if r.Term <= m.GetTerm() {
+			lastIdx := r.RaftLog.LastIndex()
+			lastTerm, _ := r.RaftLog.Term(lastIdx)
+
+			if lastTerm < m.GetLogTerm() ||
+				(lastTerm == m.GetLogTerm() && lastIdx <= m.GetLogTerm()) {
 				grantVote = true
 			}
 		}
@@ -426,6 +434,7 @@ func (r *Raft) handleVoteRequest(m pb.Message) {
 		MsgType: pb.MessageType_MsgRequestVoteResponse,
 		From:    r.id,
 		To:      m.GetFrom(),
+		Term:    r.Term,
 		Reject:  !grantVote,
 	})
 }

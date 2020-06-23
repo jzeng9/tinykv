@@ -105,10 +105,19 @@ func (l *RaftLog) LastIndex() uint64 {
 // Term return the term of the entry in the given index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
-	if uint64(len(l.entries)) <= i {
-		return 0, errors.New("Index is invalid")
+	snapshotLastIdx, err := l.storage.LastIndex()
+	if err != nil {
+		return 0, err
 	}
-	return l.entries[i].Term, nil
+
+	if i > snapshotLastIdx {
+		i = i - snapshotLastIdx
+		if i >= uint64(len(l.entries)) {
+			return 0, errors.New("Invalid index")
+		}
+		return l.entries[i].Term, nil
+	}
+	return l.storage.Term(i)
 }
 
 func (l *RaftLog) appendNewLog(ent pb.Entry) {
