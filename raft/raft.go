@@ -278,7 +278,7 @@ func (r *Raft) runElection() {
 	// send out the request votes
 	for id := range r.votes {
 		if id == r.id {
-			r.votes[id] = true
+			// r.votes[id] = true
 			continue
 		}
 
@@ -290,6 +290,14 @@ func (r *Raft) runElection() {
 			Term:    r.Term,
 		})
 	}
+
+	// Send myself a vote as well
+	r.handleVoteRequestReponse(pb.Message{
+		MsgType: pb.MessageType_MsgRequestVote,
+		To:      r.id,
+		From:    r.id,
+		Term:    r.Term,
+	})
 }
 
 // becomeLeader transform this peer's state to leader
@@ -427,7 +435,12 @@ func (r *Raft) handleVoteRequestReponse(m pb.Message) {
 		return
 	}
 
-	r.votes[m.From] = true
+	r.votes[m.GetFrom()] = !m.GetReject()
+	if !r.votes[m.GetFrom()] {
+		return
+	}
+
+	// count the votes stupidly
 	count := 0
 	for _, voted := range r.votes {
 		if voted {
