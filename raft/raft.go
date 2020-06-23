@@ -17,6 +17,7 @@ package raft
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 )
@@ -170,19 +171,23 @@ func newRaft(c *Config) *Raft {
 		votes[id] = false
 	}
 
+	newRaftLog := newLog(c.Storage)
+	curTem, _ := newRaftLog.Term(newRaftLog.LastIndex())
+
+	rand := rand.New(rand.NewSource(int64(c.ID)))
+
 	// Your Code Here (2A).
-	// TODO: imple the restart
 	return &Raft{
 		id:               c.ID,
-		Term:             0, /* to be decided */
+		Term:             curTem,
 		Vote:             0,
-		RaftLog:          newLog(c.Storage),
+		RaftLog:          newRaftLog,
 		State:            StateFollower,
 		votes:            votes,
 		msgs:             []pb.Message{},
 		Lead:             0,
 		heartbeatTimeout: c.HeartbeatTick,
-		electionTimeout:  c.ElectionTick,
+		electionTimeout:  c.ElectionTick + rand.Intn(c.ElectionTick),
 		heartbeatElapsed: 0,
 		electionElapsed:  0,
 	}
@@ -227,16 +232,20 @@ func (r *Raft) tick() {
 		r.heartbeatElapsed++
 		// check
 		if r.heartbeatElapsed == r.heartbeatTimeout {
+			r.heartbeatElapsed = 0
 			// Pass the beat to the step method
 			r.Step(pb.Message{
 				MsgType: pb.MessageType_MsgBeat,
 			})
 		}
+	case StateCandidate:
+		fallthrough
 	case StateFollower:
 		r.electionElapsed++
 		// check
 		if r.electionElapsed == r.electionTimeout {
 			// Pass the hub to the step method
+			r.electionElapsed = 0
 			r.Step(pb.Message{
 				MsgType: pb.MessageType_MsgHup,
 			})
@@ -262,7 +271,9 @@ func (r *Raft) becomeCandidate() {
 	r.Vote = r.id
 	r.Lead = r.id
 	r.Term++
+}
 
+func (r *Raft) runElection() {
 	// TODO: should a candidate be able to run twice election
 	// send out the request votes
 	for id := range r.votes {
@@ -306,6 +317,7 @@ func (r *Raft) Step(m pb.Message) error {
 	case pb.MessageType_MsgHup:
 		// Election time out happen (2aa)
 		r.becomeCandidate()
+		r.runElection()
 	case pb.MessageType_MsgBeat:
 		// Time for heat beat (2aa)
 		r.sendHeartBeats()
@@ -315,7 +327,8 @@ func (r *Raft) Step(m pb.Message) error {
 
 		}
 	case pb.MessageType_MsgAppend:
-		// TODO: handle the msg to append log (2ab)
+		// Handle the msg to append log (2ab)
+		r.handleAppendEntries(m)
 	case pb.MessageType_MsgAppendResponse:
 		// TODO: reponse from append req (2ab)
 	case pb.MessageType_MsgRequestVote:
@@ -340,6 +353,10 @@ func (r *Raft) Step(m pb.Message) error {
 // handleAppendEntries handle AppendEntries RPC request
 func (r *Raft) handleAppendEntries(m pb.Message) {
 	// Your Code Here (2AB).
+	if r.State != StateFollower {
+		r.becomeFollower(m.GetTerm(), m.GetFrom())
+	}
+	r.Term = m.Term
 }
 
 // handleHeartbeat handle Heartbeat RPC request
@@ -384,7 +401,7 @@ func (r *Raft) handleVoteRequest(m pb.Message) {
 		} else if r.Term < m.GetTerm() {
 			grantVote = true
 		} else {
-			if m.GetIndex() > r.RaftLog.LastIndex() {
+			if m.GetIndex() >= r.RaftLog.LastIndex() {
 				grantVote = true
 			}
 		}
@@ -392,6 +409,10 @@ func (r *Raft) handleVoteRequest(m pb.Message) {
 
 	if grantVote {
 		r.Vote = m.GetFrom()
+		// TODO: we are not reverting as the doc sepcified
+		// if r.State == StateCandidate || r.State == StateLeader {
+		// 	r.becomeFollower(term)
+		// }
 	}
 	r.msgs = append(r.msgs, pb.Message{
 		MsgType: pb.MessageType_MsgRequestVoteResponse,

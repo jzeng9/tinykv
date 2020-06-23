@@ -14,7 +14,11 @@
 
 package raft
 
-import pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
+import (
+	"errors"
+
+	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
+)
 
 // RaftLog manage the log entries, its struct look like:
 //
@@ -101,20 +105,10 @@ func (l *RaftLog) LastIndex() uint64 {
 // Term return the term of the entry in the given index
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
-	if len(l.entries) == 0 {
-		// TODO: expect the storage returns error when there is nothing
-		lastIdx, err := l.storage.LastIndex()
-		if err != nil {
-			return 0, err
-		}
-
-		lastTerm, err := l.storage.Term(lastIdx)
-		if err != nil {
-			return 0, err
-		}
-		return lastTerm, nil
+	if uint64(len(l.entries)) <= i {
+		return 0, errors.New("Index is invalid")
 	}
-	return l.entries[len(l.entries)-1].Term, nil
+	return l.entries[i].Term, nil
 }
 
 func (l *RaftLog) appendNewLog(ent pb.Entry) {
