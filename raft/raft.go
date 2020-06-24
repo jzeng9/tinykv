@@ -290,11 +290,15 @@ func (r *Raft) runElection() {
 		}
 
 		r.votes[id] = false
+		lastIdx := r.RaftLog.LastIndex()
+		lastTerm, _ := r.RaftLog.Term(lastIdx)
 		r.msgs = append(r.msgs, pb.Message{
 			MsgType: pb.MessageType_MsgRequestVote,
 			To:      id,
 			From:    r.id,
 			Term:    r.Term,
+			LogTerm: lastTerm,
+			Index:   lastIdx,
 		})
 	}
 
@@ -317,11 +321,11 @@ func (r *Raft) becomeLeader() {
 
 	r.heartbeatElapsed = r.heartbeatTimeout
 	// Append noop entry
-	r.RaftLog.appendNewLog(pb.Entry{
-		EntryType: pb.EntryType_EntryNormal,
-		Term:      r.Term,
-		Index:     r.RaftLog.LastIndex() + 1,
-	})
+	// r.RaftLog.appendNewLog(pb.Entry{
+	// 	EntryType: pb.EntryType_EntryNormal,
+	// 	Term:      r.Term,
+	// 	Index:     r.RaftLog.LastIndex() + 1,
+	// })
 }
 
 // Step the entrance of handle message, see `MessageType`
@@ -331,6 +335,9 @@ func (r *Raft) Step(m pb.Message) error {
 	switch m.MsgType {
 	case pb.MessageType_MsgHup:
 		// Election time out happen (2aa)
+		if r.State == StateLeader {
+			break
+		}
 		r.becomeCandidate()
 		r.runElection()
 	case pb.MessageType_MsgBeat:
@@ -368,6 +375,7 @@ func (r *Raft) Step(m pb.Message) error {
 // handleAppendEntries handle AppendEntries RPC request
 func (r *Raft) handleAppendEntries(m pb.Message) {
 	// Your Code Here (2AB).
+	// TODO: take term into consideration
 	if r.State != StateFollower {
 		r.becomeFollower(m.GetTerm(), m.GetFrom())
 	}
@@ -377,29 +385,25 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 // handleHeartbeat handle Heartbeat RPC request
 func (r *Raft) handleHeartbeat(m pb.Message) {
 	// Your Code Here (2A).
-	if r.State == StateFollower && r.Lead == m.GetFrom() {
-		// Recevied heartbeat from the real leader
-		r.msgs = append(r.msgs, pb.Message{
-			MsgType: pb.MessageType_MsgHeartbeatResponse,
-			To:      m.GetFrom(),
-			From:    r.id,
-			Term:    r.Term,
-		})
-	} else if r.Term < m.GetTerm() ||
-		(r.Term == m.GetTerm() && r.State == StateCandidate) {
-		// roll back to candidate
+	if r.Term <= m.GetTerm() {
+		if r.Lead != 0 && r.Lead != m.GetFrom() && r.Term == m.GetTerm() {
+			panic(
+				fmt.Sprintf(
+					"In the same term, there were two leaders ini the same term: %v and %v",
+					m.GetFrom(),
+					r.Lead,
+				),
+			)
+		}
 		r.becomeFollower(m.GetTerm(), m.GetFrom())
-	} else if r.Term > m.GetTerm() {
-		// pass
-	} else {
-		panic(
-			fmt.Sprintf(
-				"In the same term, there were two leaders ini the same term: %v and %v",
-				m.GetFrom(),
-				r.Lead,
-			),
-		)
 	}
+
+	r.msgs = append(r.msgs, pb.Message{
+		MsgType: pb.MessageType_MsgHeartbeatResponse,
+		To:      m.GetFrom(),
+		From:    r.id,
+		Term:    r.Term,
+	})
 }
 
 // handleSnapshot handle Snapshot RPC request
@@ -411,25 +415,17 @@ func (r *Raft) handleSnapshot(m pb.Message) {
 func (r *Raft) handleVoteRequest(m pb.Message) {
 	var grantVote bool = false
 
-	if r.Vote == 0 || r.Vote == m.GetFrom() {
-		if r.Term <= m.GetTerm() {
-			lastIdx := r.RaftLog.LastIndex()
-			lastTerm, _ := r.RaftLog.Term(lastIdx)
+	if r.Term < m.GetTerm() ||
+		(r.Term == m.GetTerm() && (r.Vote == 0 || r.Vote == m.GetFrom())) {
+		lastIdx := r.RaftLog.LastIndex()
+		lastTerm, _ := r.RaftLog.Term(lastIdx)
 
-			if lastTerm < m.GetLogTerm() ||
-				(lastTerm == m.GetLogTerm() && lastIdx <= m.GetLogTerm()) {
-				grantVote = true
-			}
+		if lastTerm < m.GetLogTerm() ||
+			(lastTerm == m.GetLogTerm() && lastIdx <= m.GetIndex()) {
+			grantVote = true
 		}
 	}
 
-	if grantVote {
-		r.Vote = m.GetFrom()
-		// TODO: we are not reverting as the doc sepcified
-		// if r.State == StateCandidate || r.State == StateLeader {
-		// 	r.becomeFollower(term)
-		// }
-	}
 	r.msgs = append(r.msgs, pb.Message{
 		MsgType: pb.MessageType_MsgRequestVoteResponse,
 		From:    r.id,
@@ -437,11 +433,24 @@ func (r *Raft) handleVoteRequest(m pb.Message) {
 		Term:    r.Term,
 		Reject:  !grantVote,
 	})
+
+	if m.GetTerm() > r.Term {
+		r.becomeFollower(m.GetTerm(), 0)
+	}
+
+	if grantVote {
+		r.Vote = m.GetFrom()
+	}
 }
 
 func (r *Raft) handleVoteRequestReponse(m pb.Message) {
 	if r.State != StateCandidate {
 		return
+	}
+
+	// Revoke
+	if r.Term < m.GetTerm() {
+		r.becomeFollower(m.GetTerm(), 0)
 	}
 
 	r.votes[m.GetFrom()] = !m.GetReject()
